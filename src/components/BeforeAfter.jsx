@@ -9,6 +9,22 @@ export const BeforeAfter = ({ beforeImage, afterImage }) => {
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const containerRef = useRef(null);
 
+  useEffect(() => {
+    console.log('BeforeAfter - beforeImage:', beforeImage);
+    console.log('BeforeAfter - afterImage:', afterImage);
+  }, [beforeImage, afterImage]);
+
+  if (!beforeImage || !afterImage) {
+    return (
+      <div style={styles.wrapper}>
+        <div style={styles.loading}>
+          {!beforeImage && <p>Loading original image...</p>}
+          {!afterImage && <p>Loading processed image...</p>}
+        </div>
+      </div>
+    );
+  }
+
   const handleMouseDown = useCallback((e) => {
     if (e.button === 0) {
       setIsDragging(true);
@@ -105,14 +121,14 @@ export const BeforeAfter = ({ beforeImage, afterImage }) => {
             transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
           }}
         >
-          <img src={beforeImage} alt="Before" style={styles.image} />
+          <img key={beforeImage} src={beforeImage} alt="Before" style={styles.image} />
           <div
             style={{
               ...styles.afterImageContainer,
               clipPath: `inset(0 ${100 - sliderPosition}% 0 0)`,
             }}
           >
-            <img src={afterImage} alt="After" style={styles.image} />
+            <img key={afterImage} src={afterImage} alt="After" style={styles.image} />
           </div>
 
           <div
@@ -248,5 +264,13 @@ const styles = {
     borderRadius: '4px',
     fontSize: '0.9rem',
     fontWeight: 'bold',
-  },
-};
+  },  loading: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '3rem',
+    backgroundColor: '#f3f4f6',
+    borderRadius: '8px',
+    color: '#6b7280',
+  },};

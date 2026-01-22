@@ -51,8 +51,7 @@ export const firestoreService = {
     try {
       const q = query(
         collection(db, UPLOADS_COLLECTION),
-        where('userId', '==', userId),
-        orderBy('createdAt', 'desc')
+        where('userId', '==', userId)
       );
       
       const querySnapshot = await getDocs(q);
@@ -60,6 +59,12 @@ export const firestoreService = {
         id: doc.id,
         ...doc.data()
       }));
+      
+      // Sort by createdAt on client side to avoid needing a composite index
+      uploads.sort((a, b) => {
+        if (!a.createdAt || !b.createdAt) return 0;
+        return b.createdAt.toMillis() - a.createdAt.toMillis();
+      });
       
       return { uploads, error: null };
     } catch (error) {

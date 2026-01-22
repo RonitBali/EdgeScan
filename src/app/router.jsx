@@ -44,7 +44,7 @@ const PublicRoute = ({ children }) => {
     );
   }
 
-  return !isAuthenticated ? children : <Navigate to="/upload" replace />;
+  return !isAuthenticated ? children : <Navigate to="/gallery" replace />;
 };
 
 export const AppRouter = () => {

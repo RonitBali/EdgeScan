@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useUploads } from '../hooks/useUploads';
 import { Loader } from '../components/Loader';
 import { indexedDBService } from '../services/indexedDBService';
+import { authService } from '../services/authService';
 
 export const Gallery = () => {
   const { user } = useAuth();
@@ -12,6 +13,11 @@ export const Gallery = () => {
 
   const handleNavigate = useCallback((path) => {
     navigate(path);
+  }, [navigate]);
+
+  const handleLogout = useCallback(async () => {
+    await authService.signOut();
+    navigate('/');
   }, [navigate]);
 
   if (loading) {
@@ -25,13 +31,16 @@ export const Gallery = () => {
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <h1 style={styles.title}>📚 My Gallery</h1>
+        <div style={styles.headerLeft}>
+          <h1 style={styles.title}>My Documents</h1>
+          <p style={styles.headerSubtitle}>View and manage all your scanned documents</p>
+        </div>
         <div style={styles.headerButtons}>
-          <button onClick={() => navigate('/upload')} style={styles.navButton}>
-            ➕ New Upload
+          <button onClick={() => navigate('/upload')} style={styles.primaryButton}>
+            New Document
           </button>
-          <button onClick={() => navigate('/')} style={styles.navButton}>
-            🚪 Logout
+          <button onClick={handleLogout} style={styles.secondaryButton}>
+            Sign Out
           </button>
         </div>
       </div>
@@ -44,14 +53,21 @@ export const Gallery = () => {
 
       {!error && uploads.length === 0 && (
         <div style={styles.empty}>
-          <div style={styles.emptyIcon}>📭</div>
-          <h2 style={styles.emptyTitle}>No uploads yet</h2>
-          <p style={styles.emptyText}>
-            Start by uploading your first document!
-          </p>
-          <button onClick={() => navigate('/upload')} style={styles.uploadButton}>
-            Upload Document
-          </button>
+          <div style={styles.emptyContent}>
+            <svg width="120" height="120" viewBox="0 0 120 120" fill="none" style={styles.emptyIcon}>
+              <rect x="20" y="20" width="80" height="90" rx="8" stroke="#d1d5db" strokeWidth="3" fill="none"/>
+              <line x1="35" y1="40" x2="85" y2="40" stroke="#d1d5db" strokeWidth="3"/>
+              <line x1="35" y1="55" x2="70" y2="55" stroke="#d1d5db" strokeWidth="3"/>
+              <line x1="35" y1="70" x2="85" y2="70" stroke="#d1d5db" strokeWidth="3"/>
+            </svg>
+            <h2 style={styles.emptyTitle}>No Documents Yet</h2>
+            <p style={styles.emptyText}>
+              Upload your first document to get started with scanning and enhancement
+            </p>
+            <button onClick={() => navigate('/upload')} style={styles.uploadButton}>
+              Upload Your First Document
+            </button>
+          </div>
         </div>
       )}
 
@@ -70,73 +86,199 @@ export const Gallery = () => {
   );
 };
 
+// GalleryCard component
+const GalleryCard = ({ upload, onNavigate }) => {
+  const [thumbnailUrl, setThumbnailUrl] = useState(null);
+
+  useEffect(() => {
+    const loadThumbnail = async () => {
+      if (upload.storedLocally && upload.uploadId) {
+        const blob = await indexedDBService.getImage(upload.uploadId, 'processed_0');
+        if (blob) {
+          setThumbnailUrl(URL.createObjectURL(blob));
+        }
+      }
+    };
+
+    loadThumbnail();
+
+    return () => {
+      if (thumbnailUrl) URL.revokeObjectURL(thumbnailUrl);
+    };
+  }, [upload]);
+
+  const handleClick = () => {
+    onNavigate(`/viewer/${upload.id}`);
+  };
+
+  const formatDate = (timestamp) => {
+    if (!timestamp) return 'Unknown';
+    return new Date(timestamp.toMillis()).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  const getFilterLabel = (filter) => {
+    const labels = {
+      auto: 'Auto Enhanced',
+      grayscale: 'Grayscale',
+      highContrast: 'High Contrast',
+      blackAndWhite: 'Black & White',
+      enhance: 'Smart Enhanced',
+      original: 'Original'
+    };
+    return labels[filter] || 'Enhanced';
+  };
+
+  return (
+    <div style={styles.card} onClick={handleClick}>
+      <div style={styles.imageContainer}>
+        {thumbnailUrl ? (
+          <img src={thumbnailUrl} alt={upload.filename} style={styles.thumbnail} />
+        ) : (
+          <div style={styles.thumbnailPlaceholder}>
+            <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+              <rect x="15" y="15" width="50" height="60" rx="4" stroke="#d1d5db" strokeWidth="2" fill="none"/>
+              <line x1="25" y1="30" x2="55" y2="30" stroke="#d1d5db" strokeWidth="2"/>
+              <line x1="25" y1="40" x2="45" y2="40" stroke="#d1d5db" strokeWidth="2"/>
+              <line x1="25" y1="50" x2="55" y2="50" stroke="#d1d5db" strokeWidth="2"/>
+            </svg>
+          </div>
+        )}
+        {upload.documentCount > 1 && (
+          <div style={styles.badge}>{upload.documentCount} pages</div>
+        )}
+      </div>
+      <div style={styles.cardContent}>
+        <h3 style={styles.cardTitle}>{upload.filename}</h3>
+        <div style={styles.cardMeta}>
+          <div style={styles.metaRow}>
+            <span style={styles.metaLabel}>Filter</span>
+            <span style={styles.metaValue}>{getFilterLabel(upload.filter)}</span>
+          </div>
+          <div style={styles.metaRow}>
+            <span style={styles.metaLabel}>Created</span>
+            <span style={styles.metaValue}>{formatDate(upload.createdAt)}</span>
+          </div>
+          <div style={styles.metaRow}>
+            <span style={styles.metaLabel}>Status</span>
+            <span style={{
+              ...styles.statusBadge,
+              ...(upload.status === 'completed' ? styles.statusSuccess : styles.statusPending)
+            }}>
+              {upload.status === 'completed' ? 'Ready' : 'Processing'}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const styles = {
   container: {
     minHeight: '100vh',
-    padding: '2rem',
-    backgroundColor: '#f5f5f5',
+    padding: '2rem 3rem',
+    backgroundColor: '#f9fafb',
   },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '2rem',
+    alignItems: 'flex-start',
+    marginBottom: '3rem',
     flexWrap: 'wrap',
-    gap: '1rem',
+    gap: '1.5rem',
+  },
+  headerLeft: {
+    flex: '1',
+    minWidth: '250px',
   },
   title: {
-    fontSize: '2rem',
-    color: '#333',
+    fontSize: '2.5rem',
+    color: '#111827',
+    fontWeight: '800',
+    marginBottom: '0.5rem',
+    letterSpacing: '-0.5px',
+  },
+  headerSubtitle: {
+    fontSize: '1rem',
+    color: '#6b7280',
+    fontWeight: '400',
   },
   headerButtons: {
     display: 'flex',
-    gap: '10px',
+    gap: '12px',
+    alignItems: 'center',
   },
-  navButton: {
-    padding: '10px 20px',
-    backgroundColor: '#3498db',
+  primaryButton: {
+    padding: '12px 24px',
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
     color: 'white',
     border: 'none',
-    borderRadius: '6px',
+    borderRadius: '8px',
     cursor: 'pointer',
     fontSize: '0.95rem',
+    fontWeight: '600',
+    transition: 'all 0.2s ease',
+  },
+  secondaryButton: {
+    padding: '12px 24px',
+    background: 'white',
+    color: '#374151',
+    border: '1px solid #d1d5db',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontSize: '0.95rem',
+    fontWeight: '600',
+    transition: 'all 0.2s ease',
   },
   error: {
-    backgroundColor: 'white',
-    padding: '2rem',
+    backgroundColor: '#fef2f2',
+    border: '1px solid #fca5a5',
+    color: '#dc2626',
+    padding: '1rem',
     borderRadius: '8px',
-    color: '#c33',
-    textAlign: 'center',
+    marginBottom: '2rem',
+    fontSize: '0.875rem',
+    fontWeight: '500',
   },
   empty: {
     backgroundColor: 'white',
     padding: '4rem 2rem',
-    borderRadius: '8px',
+    borderRadius: '12px',
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+  },
+  emptyContent: {
+    maxWidth: '400px',
+    margin: '0 auto',
     textAlign: 'center',
   },
   emptyIcon: {
-    fontSize: '4rem',
-    marginBottom: '1rem',
+    marginBottom: '2rem',
   },
   emptyTitle: {
     fontSize: '1.5rem',
-    color: '#333',
-    marginBottom: '0.5rem',
+    color: '#111827',
+    marginBottom: '0.75rem',
+    fontWeight: '700',
   },
   emptyText: {
     fontSize: '1rem',
-    color: '#666',
+    color: '#6b7280',
     marginBottom: '2rem',
+    lineHeight: '1.6',
   },
   uploadButton: {
     padding: '14px 28px',
-    backgroundColor: '#27ae60',
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
     color: 'white',
     border: 'none',
-    borderRadius: '6px',
+    borderRadius: '8px',
     cursor: 'pointer',
-    fontSize: '1.05rem',
-    fontWeight: '500',
+    fontSize: '1rem',
+    fontWeight: '600',
   },
   grid: {
     display: 'grid',
@@ -145,17 +287,19 @@ const styles = {
   },
   card: {
     backgroundColor: 'white',
-    borderRadius: '8px',
+    borderRadius: '12px',
     overflow: 'hidden',
-    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
     cursor: 'pointer',
-    transition: 'transform 0.2s, box-shadow 0.2s',
+    transition: 'all 0.2s ease',
+    border: '1px solid #e5e7eb',
   },
   imageContainer: {
     position: 'relative',
     width: '100%',
-    height: '200px',
-    backgroundColor: '#f0f0f0',
+    height: '220px',
+    backgroundColor: '#f9fafb',
+    overflow: 'hidden',
   },
   thumbnail: {
     width: '100%',
@@ -164,73 +308,66 @@ const styles = {
   },
   badge: {
     position: 'absolute',
-    top: '10px',
-    right: '10px',
-    backgroundColor: 'rgba(52, 152, 219, 0.9)',
+    top: '12px',
+    right: '12px',
+    background: '#111827',
     color: 'white',
-    padding: '4px 12px',
-    borderRadius: '12px',
-    fontSize: '0.85rem',
-    fontWeight: '500',
+    padding: '6px 12px',
+    borderRadius: '6px',
+    fontSize: '0.75rem',
+    fontWeight: '600',
   },
   cardContent: {
-    padding: '1rem',
+    padding: '1.25rem',
   },
   cardTitle: {
-    fontSize: '1.1rem',
-    color: '#333',
-    marginBottom: '0.75rem',
+    fontSize: '1rem',
+    color: '#111827',
+    marginBottom: '1rem',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+    fontWeight: '600',
   },
   cardMeta: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '0.5rem',
+    gap: '0.625rem',
   },
-  metaItem: {
+  metaRow: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    fontSize: '0.9rem',
+    fontSize: '0.875rem',
   },
   metaLabel: {
-    color: '#666',
+    color: '#6b7280',
+    fontWeight: '500',
   },
   metaValue: {
-    color: '#333',
-    fontWeight: '500',
+    color: '#111827',
+    fontWeight: '600',
   },
   statusBadge: {
     padding: '4px 10px',
-    borderRadius: '12px',
-    fontSize: '0.85rem',
-    fontWeight: '500',
+    borderRadius: '6px',
+    fontSize: '0.75rem',
+    fontWeight: '600',
   },
   statusSuccess: {
-    backgroundColor: '#d4edda',
-    color: '#155724',
+    backgroundColor: '#d1fae5',
+    color: '#065f46',
   },
   statusPending: {
-    backgroundColor: '#fff3cd',
-    color: '#856404',
+    backgroundColor: '#fef3c7',
+    color: '#92400e',
   },
   thumbnailPlaceholder: {
     width: '100%',
-    height: '200px',
+    height: '100%',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '3rem',
-    backgroundColor: '#f0f0f0',
-  },
-  warningText: {
-    fontSize: '0.85rem',
-    color: '#856404',
-    marginTop: '0.5rem',
-    padding: '0.5rem',
-    backgroundColor: '#fff3cd',
-    borderRadius: '4px',
+    backgroundColor: '#f3f4f6',
   },
 };

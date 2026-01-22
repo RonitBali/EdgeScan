@@ -20,50 +20,91 @@ export const Viewer = () => {
   const [processedImageUrls, setProcessedImageUrls] = useState([]);
 
   useEffect(() => {
-    if (!uploadId) return;
+    if (!uploadId || !user) return;
 
     const fetchUpload = async () => {
       setLoading(true);
+      setError(''); // Clear any previous errors
       try {
+        console.log('Fetching upload:', uploadId, 'for user:', user.uid);
         const { upload, error } = await firestoreService.getUpload(uploadId);
         
         if (error) {
+          console.error('Firestore error:', error);
           setError(error);
           setLoading(false);
           return;
         }
         
-        if (!upload || upload.userId !== user?.uid) {
-          setError('Upload not found or access denied');
+        if (!upload) {
+          console.error('Upload not found');
+          setError('Upload not found');
+          setLoading(false);
+          return;
+        }
+        
+        console.log('Upload data:', upload);
+        console.log('Upload userId:', upload.userId);
+        console.log('Current user uid:', user.uid);
+        console.log('Match?', upload.userId === user.uid);
+        
+        if (upload.userId !== user.uid) {
+          console.error('Access denied. Upload userId:', upload.userId, 'Current user:', user.uid);
+          setError('Access denied');
           setLoading(false);
           return;
         }
         
         setUpload(upload);
         
+        console.log('Loading images. storedLocally:', upload.storedLocally, 'uploadId:', upload.uploadId);
+        
         // Load images from IndexedDB
         if (upload.storedLocally && upload.uploadId) {
           // Load original image
+          console.log('Fetching original image from IndexedDB...');
           const originalBlob = await indexedDBService.getImage(upload.uploadId, 'original');
+          console.log('Original blob:', originalBlob);
           if (originalBlob) {
-            setOriginalImageUrl(URL.createObjectURL(originalBlob));
+            // Convert blob to data URL instead of blob URL
+            const reader = new FileReader();
+            const dataUrl = await new Promise((resolve) => {
+              reader.onloadend = () => resolve(reader.result);
+              reader.readAsDataURL(originalBlob);
+            });
+            console.log('Original data URL created, length:', dataUrl.length);
+            setOriginalImageUrl(dataUrl);
+          } else {
+            console.warn('No original blob found in IndexedDB');
+            setOriginalImageUrl(null);
           }
           
           // Load processed images
-          const processedUrls = [];
+          const processedDataUrls = [];
           for (let i = 0; i < upload.documentCount; i++) {
+            console.log(`Fetching processed image ${i} from IndexedDB...`);
             const processedBlob = await indexedDBService.getImage(upload.uploadId, `processed_${i}`);
+            console.log(`Processed blob ${i}:`, processedBlob);
             if (processedBlob) {
-              processedUrls.push(URL.createObjectURL(processedBlob));
+              // Convert blob to data URL
+              const reader = new FileReader();
+              const dataUrl = await new Promise((resolve) => {
+                reader.onloadend = () => resolve(reader.result);
+                reader.readAsDataURL(processedBlob);
+              });
+              console.log(`Processed data URL ${i} created, length:`, dataUrl.length);
+              processedDataUrls.push(dataUrl);
             }
           }
-          setProcessedImageUrls(processedUrls);
+          setProcessedImageUrls(processedDataUrls);
+          console.log('All images loaded as data URLs');
         } else {
           // Legacy Firebase Storage URLs (if any old uploads exist)
           setOriginalImageUrl(upload.originalUrl);
           setProcessedImageUrls(upload.processedUrls?.map(p => p.url) || []);
         }
       } catch (err) {
+        console.error('Error in fetchUpload:', err);
         setError(err.message);
       } finally {
         setLoading(false);
@@ -71,13 +112,15 @@ export const Viewer = () => {
     };
 
     fetchUpload();
-    
-    // Cleanup object URLs on unmount
-    return () => {
-      if (originalImageUrl) URL.revokeObjectURL(originalImageUrl);
-      processedImageUrls.forEach(url => URL.revokeObjectURL(url));
-    };
-  }, [uploadId, user]);
+  }, [uploadId, user]); // Only re-run when uploadId or user changes
+
+  if (!user) {
+    return (
+      <div style={styles.container}>
+        <Loader message="Authenticating..." />
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -106,7 +149,11 @@ export const Viewer = () => {
   }
 
   const processedDoc = upload.processedData?.[selectedDocIndex];
-  const currentProcessedUrl = processedImageUrls[selectedDocIndex] || originalImageUrl;
+  const currentProcessedUrl = processedImageUrls[selectedDocIndex];
+
+  console.log('Viewer render - originalImageUrl:', originalImageUrl);
+  console.log('Viewer render - currentProcessedUrl:', currentProcessedUrl);
+  console.log('Viewer render - processedImageUrls:', processedImageUrls);
 
   return (
     <div style={styles.container}>
